@@ -33,6 +33,7 @@ from src.utils.time import utc_time
 PARENT = 'ledger'
 DEFAULT_TABLE = 'ledger_default'
 SCHEMA_LOCK = 531500  # pg_advisory_xact_lock key，串行化建表与拆分
+MONTH_LOCK_BASE = 532000  # 月份级锁，保护入账与该月分区接管的交接
 
 MONTHLY = 'monthly'    # 月表
 MIGRATING = 'migrating'  # 拆分中
@@ -97,6 +98,14 @@ def _read_month(value, label):
     if start.day != 1 or start == date(9999, 12, 1):
         raise HTTPException(422, f'{label}须为月初日期，且须有可表示的次月月初')
     return start
+
+
+def _month_lock_key(start):
+    return MONTH_LOCK_BASE + start.year * 100 + start.month
+
+
+def _lock_month(conn, start):
+    conn.execute(text('SELECT pg_advisory_xact_lock(:key)'), {'key': _month_lock_key(start)})
 
 
 def _log(conn, actor, action, reference):
@@ -177,6 +186,8 @@ def ingest(records, actor):
     received_at = utc_time()
     acks = []
     with engine.begin() as conn:
+        for month in sorted({entered_on.replace(day=1) for _, entered_on, _ in slips}):
+            _lock_month(conn, month)
         active = {row.month: row.daily_table for row in conn.execute(
             select(ledger_migrations).where(ledger_migrations.c.state.in_(ACTIVE_STATES))).mappings()}
         for slip_id, entered_on, source in slips:
@@ -368,6 +379,7 @@ def _repair_batch(conn, migration):
 
 def _advance_copy(conn, migration):
     """copying 状态推进一步。返回 True 表示有进展，worker 可立即继续。"""
+    _lock_month(conn, migration['month'])
     updates = {'updated_at': utc_time(), 'last_error': None}
     scanned, inserted, last_on, last_id = _copy_batch(conn, migration)
     if scanned:
