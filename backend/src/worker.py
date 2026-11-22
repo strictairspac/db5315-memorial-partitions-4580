@@ -4,6 +4,7 @@ from threading import Event, Thread
 from time import sleep
 
 from src.config.settings import ARTIFACTS, cache, engine
+from src.services import ledger
 from src.services.domain import solve
 from src.services.workflow import claim, finish
 
@@ -23,7 +24,14 @@ def work():
             job = claim()
             HEARTBEAT.touch()
             if not job:
-                cache.brpop('worker:wake', timeout=1)
+                # 没有排队的演练执行时，推进在线账簿的拆分任务（每拍一步，可中断续跑）。
+                try:
+                    stepped = ledger.advance_active()
+                except Exception:
+                    logging.exception('Ledger migration step failure')
+                    stepped = False
+                if not stepped:
+                    cache.brpop('worker:wake', timeout=1)
                 continue
             run_id, token, payload = job
             stop = Event()

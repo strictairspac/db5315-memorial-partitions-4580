@@ -1,5 +1,5 @@
-from sqlalchemy import (JSON, Column, ForeignKey, Integer, MetaData, String,
-                        Table, Text)
+from sqlalchemy import (JSON, Column, Date, ForeignKey, Integer, MetaData,
+                        String, Table, Text)
 
 schema = MetaData()
 users = Table('accounts', schema,
@@ -38,3 +38,23 @@ audit = Table('audit_events', schema,
     Column('action', String(32), nullable=False),
     Column('reference', String(50), nullable=False),
     Column('created_at', String(32), nullable=False))
+# 在线账簿的登记控制表。凭条本体存放在 PostgreSQL 声明式分区表 ledger 中，
+# 由 src/services/ledger.py 用原生 DDL 建表（月分区 + DEFAULT 待核池）。
+ledger_months = Table('ledger_months', schema,
+    Column('month', Date, primary_key=True),
+    Column('mode', String(20), nullable=False),
+    Column('created_at', String(32), nullable=False))
+ledger_migrations = Table('ledger_migrations', schema,
+    Column('id', Integer, primary_key=True),
+    Column('month', Date, nullable=False, unique=True),
+    Column('state', String(20), nullable=False, index=True),
+    Column('monthly_table', String(64), nullable=False),
+    Column('daily_table', String(64), nullable=False),
+    Column('checkpoint_on', Date),
+    Column('checkpoint_id', String(200)),
+    Column('copied', Integer, nullable=False),
+    Column('batch_size', Integer, nullable=False),
+    Column('last_error', Text),
+    Column('created_at', String(32), nullable=False),
+    Column('updated_at', String(32), nullable=False),
+    Column('switched_at', String(32)))

@@ -63,6 +63,9 @@ td { border-top:1px solid var(--line); min-width: 3.3rem; max-width: 35ch; }
 .field-grid .data { background:var(--soft); padding: 1rem; border-top: var(--rule) solid var(--line); }
 .title-field { max-width: 590px; margin-bottom: 1.2rem; }
 .form-actions { margin-top: 1.1rem; }
+.inline-form { display: flex; flex-wrap: wrap; gap: .8rem 1.2rem; align-items: flex-end; margin-top: 1rem; }
+.inline-form label { display: grid; gap: .42em; font-weight: 600; }
+.inline-form input { width: auto; }
 .metrics { display: grid; grid-template-columns: repeat(auto-fit,minmax(7rem,1fr)); margin:0; align-content:start; border-top: 1px solid var(--line); }
 .metrics div { padding: .93rem 1rem; border-bottom: 1px solid var(--line); }
 .metrics dd { margin: .25em 0 0; color: var(--accent-dark); font-weight: 750; font-size: clamp(1.2rem,2.75vw,2.4rem); line-height: 1.24; overflow-wrap: anywhere; }

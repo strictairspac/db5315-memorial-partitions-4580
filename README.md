@@ -8,6 +8,22 @@
 - 分区边界
 - 生命周期执行
 - 回收核验
+- 在线账簿
+
+## 在线账簿与节庆月拆分
+
+`ledger` 父表按 `entered_on` 范围分区：每个在册月份一张月分区 `ledger_YYYYMM`，未登记月份落入 `ledger_default` 待核池。闸机补传按 `(slip_id, entered_on)` 幂等入账，已回执的凭条重传不丢不重，回执与查账页面都展示凭条实际所在的物理分区（`tableoid`）。
+
+节庆月查询卡住时，经办员在「在线账簿」把该月拆成日分区：
+
+1. **建影子树**：为当月建立 `ledger_YYYYMM_daily` 及每日一个叶子分区，登记拆分任务（同时只允许一个）。
+2. **双写追齐**：worker 按检查点分批把月表拷入日分区，每批独立提交，中断后从检查点续拷；拆分期间补传在同一事务里双写月表与日分区，新到凭条始终两边一致。
+3. **对账**：游标扫描耗尽后用 `EXCEPT` 双向核对；月表多出的行先补拷，日分区多出的行属异常、暂停切换。
+4. **一次性切换**：对齐后在一条事务里 `DETACH` 月表、`ATTACH` 日分区树，旧月表改名 `ledger_YYYYMM_archive` 留档。查询始终走父表，切换前后不会查出新旧混用的结果；其他月份的入账和查询不受影响。
+
+```sh
+cd backend && python -m pytest tests/   # 需要可用的 PostgreSQL（DB_HOST/DB_PORT 等环境变量）
+```
 
 ## 本地运行
 
@@ -45,7 +61,7 @@ docker compose up -d --build --wait
 | db | PostgreSQL 16，持久卷保存档案、执行、证据及审计 |
 | redis | Redis 7，追加日志卷保存队列唤醒信号 |
 
-编辑 `backend/src/services/domain.py` 可修改试算方法与业务表单说明。API 路由、数据定义和页面位于 `backend/src/routes/`、`backend/src/models/` 与 `frontend/src/pages/`。开发时更新源文件后重新构建对应服务。
+编辑 `backend/src/services/domain.py` 可修改试算方法与业务表单说明。在线账簿的分区拆分逻辑位于 `backend/src/services/ledger.py`，验收测试位于 `backend/tests/`。API 路由、数据定义和页面位于 `backend/src/routes/`、`backend/src/models/` 与 `frontend/src/pages/`。开发时更新源文件后重新构建对应服务。
 
 `.env.example` 提供 `FRONTEND_PORT`、`BACKEND_PORT`、`DB_PORT`、`DB_PASSWORD`、`AUTH_KEY` 、`SEED_DEMO` 与 `NETWORK_SUBNET`。修改 `NETWORK_SUBNET` 可避开本机现有容器网段。所有发布的端口绑定本机回环地址。接入独立部署前需配置自己的凭据并按业务范围做独立验收。
 
